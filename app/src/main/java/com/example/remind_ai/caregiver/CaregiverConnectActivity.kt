@@ -6,31 +6,30 @@ import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
-import com.example.remind_ai.caregiver.CaregiverHomeActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
 
 class CaregiverConnectActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private lateinit var database: FirebaseDatabase
+    private lateinit var firestore: FirebaseFirestore
 
     private lateinit var btnBack: ImageButton
     private lateinit var etPatientCode: TextInputEditText
     private lateinit var btnConnectPatient: MaterialButton
     private lateinit var btnSkipForNow: MaterialButton
 
+    private val caregiverId: String?
+        get() = auth.currentUser?.uid
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_caregiverconnect)
 
         auth = FirebaseAuth.getInstance()
-        database = FirebaseDatabase.getInstance()
+        firestore = FirebaseFirestore.getInstance()
 
         btnBack = findViewById(R.id.btnBack)
         etPatientCode = findViewById(R.id.etPatientCode)
@@ -52,93 +51,98 @@ class CaregiverConnectActivity : AppCompatActivity() {
     }
 
     private fun connectPatientByCode() {
-        val code = etPatientCode.text.toString().trim()
-        val caregiverUid = auth.currentUser?.uid
+        val code = etPatientCode.text.toString().trim().uppercase()
+        val currentCaregiverId = caregiverId
 
         if (code.isEmpty()) {
             Toast.makeText(this, "Please enter patient code", Toast.LENGTH_SHORT).show()
             return
         }
 
-        if (caregiverUid == null) {
+        if (currentCaregiverId == null) {
             Toast.makeText(this, "Caregiver not logged in", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val patientsRef = database.reference.child("patients")
+        btnConnectPatient.isEnabled = false
+        btnConnectPatient.text = "Connecting..."
 
-        patientsRef.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                var patientFound = false
+        firestore.collection("patients")
+            .whereEqualTo("connectCode", code)
+            .limit(1)
+            .get()
+            .addOnSuccessListener { result ->
+                if (result.isEmpty) {
+                    btnConnectPatient.isEnabled = true
+                    btnConnectPatient.text = "Connect Patient"
+                    Toast.makeText(this, "Invalid patient code", Toast.LENGTH_SHORT).show()
+                    return@addOnSuccessListener
+                }
 
-                for (patientSnapshot in snapshot.children) {
-                    val connectionCode =
-                        patientSnapshot.child("connectionCode").getValue(String::class.java)
+                val patientDoc = result.documents.first()
+                val patientId = patientDoc.id
 
-                    if (connectionCode == code) {
-                        patientFound = true
+                val patientName =
+                    patientDoc.getString("fullName")
+                        ?: patientDoc.getString("name")
+                        ?: "Unknown Patient"
 
-                        val patientId = patientSnapshot.key ?: return
-                        val patientName =
-                            patientSnapshot.child("fullName").getValue(String::class.java) ?: ""
-                        val patientStage =
-                            patientSnapshot.child("stage").getValue(String::class.java) ?: ""
+                val stageValue = patientDoc.get("stage")
+                val stage = when (stageValue) {
+                    is Number -> "Stage ${stageValue.toInt()}"
+                    is String -> stageValue
+                    else -> "Stage 3"
+                }
 
-                        val assignedPatient = hashMapOf(
-                            "patientId" to patientId,
-                            "patientName" to patientName,
-                            "stage" to patientStage,
-                            "linkedAt" to System.currentTimeMillis()
-                        )
+                val now = System.currentTimeMillis()
 
-                        database.reference
-                            .child("caregivers")
-                            .child(caregiverUid)
-                            .child("assigned_patients")
-                            .child(patientId)
-                            .setValue(assignedPatient)
-                            .addOnSuccessListener {
-                                Toast.makeText(
-                                    this@CaregiverConnectActivity,
-                                    "Patient connected successfully",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                val caregiverPatientData = hashMapOf(
+                    "patientId" to patientId,
+                    "patientName" to patientName,
+                    "stage" to stage,
+                    "linkedAt" to now
+                )
 
-                                startActivity(
-                                    Intent(
-                                        this@CaregiverConnectActivity,
-                                        CaregiverHomeActivity::class.java
-                                    )
-                                )
-                                finish()
-                            }
-                            .addOnFailureListener { e ->
-                                Toast.makeText(
-                                    this@CaregiverConnectActivity,
-                                    "Failed to connect patient: ${e.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        break
+                val patientCaregiverData = hashMapOf(
+                    "caregiverId" to currentCaregiverId,
+                    "linkedAt" to now
+                )
+
+                val batch = firestore.batch()
+
+                val caregiverPatientRef = firestore.collection("caregivers")
+                    .document(currentCaregiverId)
+                    .collection("linkedPatients")
+                    .document(patientId)
+
+                val patientCaregiverRef = firestore.collection("patients")
+                    .document(patientId)
+                    .collection("linkedCaregivers")
+                    .document(currentCaregiverId)
+
+                val patientRef = firestore.collection("patients")
+                    .document(patientId)
+
+                batch.set(caregiverPatientRef, caregiverPatientData)
+                batch.set(patientCaregiverRef, patientCaregiverData)
+                batch.update(patientRef, mapOf("linkedCaregiverId" to currentCaregiverId))
+
+                batch.commit()
+                    .addOnSuccessListener {
+                        Toast.makeText(this, "Patient connected successfully", Toast.LENGTH_SHORT).show()
+                        startActivity(Intent(this, CaregiverHomeActivity::class.java))
+                        finish()
                     }
-                }
-
-                if (!patientFound) {
-                    Toast.makeText(
-                        this@CaregiverConnectActivity,
-                        "Invalid patient code",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                    .addOnFailureListener { e ->
+                        btnConnectPatient.isEnabled = true
+                        btnConnectPatient.text = "Connect Patient"
+                        Toast.makeText(this, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                Toast.makeText(
-                    this@CaregiverConnectActivity,
-                    "Error finding patient: ${error.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+            .addOnFailureListener { e ->
+                btnConnectPatient.isEnabled = true
+                btnConnectPatient.text = "Connect Patient"
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
-        })
     }
 }

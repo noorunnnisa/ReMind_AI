@@ -1,35 +1,43 @@
 package com.example.remind_ai.Stage3
 
-import android.graphics.Color
+import android.app.AlertDialog
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
 import android.widget.ImageButton
-import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
 import com.google.android.material.button.MaterialButton
-import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var btnEmergencyHelp: MaterialButton
     private lateinit var tvEmergencyStatus: TextView
     private lateinit var btnProfile: ImageButton
+    private lateinit var navCaregiver: LinearLayout
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
 
-    private val dbRef = FirebaseDatabase.getInstance().reference
+    private val firestore = FirebaseFirestore.getInstance()
+    private val auth = FirebaseAuth.getInstance()
+
+    private val patientId: String?
+        get() = auth.currentUser?.uid
 
     private var isMonitoring = false
     private var possibleFreeFall = false
@@ -44,9 +52,6 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     private val inactivityDurationMs = 8000L
     private val alertCooldownMs = 30000L
 
-    private val patientId = "patient_demo"
-    private val caregiverId = "caregiver_demo"
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_patient_stage3)
@@ -54,6 +59,11 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
         btnEmergencyHelp = findViewById(R.id.btnEmergencyHelp)
         tvEmergencyStatus = findViewById(R.id.tvEmergencyStatus)
         btnProfile = findViewById(R.id.btnProfile)
+
+        // Your XML id is navCaregiver
+        navCaregiver = findViewById(R.id.navCaregiver)
+
+        createOrUpdatePatientRecord()
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -71,6 +81,76 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                 acceleration = 0.0
             )
         }
+
+        navCaregiver.setOnClickListener {
+            generateAndShowCaregiverConnectCode()
+        }
+    }
+
+    private fun createOrUpdatePatientRecord() {
+        val currentPatientId = patientId
+
+        if (currentPatientId == null) {
+            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val patientData = mapOf(
+            "patientId" to currentPatientId,
+            "stage" to 3,
+            "role" to "patient",
+            "status" to "Stable",
+            "updatedAt" to System.currentTimeMillis()
+        )
+
+        firestore.collection("patients")
+            .document(currentPatientId)
+            .set(patientData, SetOptions.merge())
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Patient setup failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun generateAndShowCaregiverConnectCode() {
+        val currentPatientId = patientId
+
+        if (currentPatientId == null) {
+            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val code = generateConnectCode()
+
+        val data = mapOf(
+            "patientId" to currentPatientId,
+            "connectCode" to code,
+            "stage" to 3,
+            "role" to "patient",
+            "connectCodeUpdatedAt" to System.currentTimeMillis(),
+            "updatedAt" to System.currentTimeMillis()
+        )
+
+        firestore.collection("patients")
+            .document(currentPatientId)
+            .set(data, SetOptions.merge())
+            .addOnSuccessListener {
+                showConnectCodeDialog(code)
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Code failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun generateConnectCode(): String {
+        return "RM${Random.nextInt(100000, 999999)}"
+    }
+
+    private fun showConnectCodeDialog(code: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Caregiver Connect Code")
+            .setMessage("Share this code with your caregiver:\n\n$code")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun startFallMonitoring() {
@@ -84,7 +164,8 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
             SensorManager.SENSOR_DELAY_NORMAL
         )
 
-        tvEmergencyStatus.text = "Safety monitoring is active. Caregiver will be notified if help is needed."
+        tvEmergencyStatus.text =
+            "Safety monitoring is active. Caregiver will be notified if help is needed."
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -143,30 +224,32 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
             if (now - impactTime > 15000L) {
                 resetFallState()
-                tvEmergencyStatus.text = "Safety monitoring is active. Caregiver will be notified if help is needed."
+                tvEmergencyStatus.text =
+                    "Safety monitoring is active. Caregiver will be notified if help is needed."
             }
         }
     }
 
     private fun sendEmergencyAlert(alertType: String, message: String, acceleration: Double) {
+        val currentPatientId = patientId
+
+        if (currentPatientId == null) {
+            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val now = System.currentTimeMillis()
         lastAlertTime = now
 
         btnEmergencyHelp.isEnabled = false
         tvEmergencyStatus.text = "Sending alert to caregiver..."
 
-        val alertId = dbRef.child("patient_alerts").push().key
-
-        if (alertId == null) {
-            btnEmergencyHelp.isEnabled = true
-            tvEmergencyStatus.text = "Could not create alert. Please try again."
-            return
-        }
+        val alertRef = firestore.collection("patient_alerts").document()
+        val alertId = alertRef.id
 
         val alert = mapOf(
             "id" to alertId,
-            "patientId" to patientId,
-            "caregiverId" to caregiverId,
+            "patientId" to currentPatientId,
             "alertType" to alertType,
             "severity" to "high",
             "message" to message,
@@ -176,9 +259,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
             "status" to "active"
         )
 
-        dbRef.child("patient_alerts")
-            .child(alertId)
-            .setValue(alert)
+        alertRef.set(alert)
             .addOnSuccessListener {
                 btnEmergencyHelp.isEnabled = true
 

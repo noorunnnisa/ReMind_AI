@@ -9,7 +9,7 @@
 
     <!-- Alarms ke liye zaroori permissions -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" /> <!-- Android 14+ ke liye zaroori -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Storage Android 12 and below -->
@@ -48,6 +48,11 @@
         <activity android:name=".activities.RegisterActivity" android:exported="false" />
         <activity android:name=".activities.RoleSelectionActivity" android:exported="false" />
         <activity android:name=".activities.StageDetectionActivity" android:exported="false" />
+
+        <!-- ================= CAREGIVER FLOW ================= -->
+        <activity android:name=".caregiver.CaregiverHomeActivity" android:exported="false" />
+        <activity android:name=".caregiver.CaregiverConnectActivity" android:exported="false" />
+
         <!-- ================= STAGE 1 ================= -->
         <activity android:name=".stage1.Stage1Activity" android:exported="false" />
         <activity android:name=".stage1.AddReminderS1Activity" android:exported="false" />
@@ -66,6 +71,7 @@
         <activity android:name=".Stage3.DailyChecklistC3Activity" android:exported="false" />
         <activity android:name=".Stage3.SoothingContentC3Activity" android:exported="false" />
         <activity android:name=".Stage3.PatientStage3Activity" android:exported="false" />
+        <activity android:name=".Stage3.CaregiverFallDetectionActivity" android:exported="false" />
 
         <!-- ================= RECEIVERS ================= -->
 
@@ -76,7 +82,6 @@
             android:exported="false" />
 
         <!-- 2. Checklist Reminder Receiver -->
-        <!-- Note: Ensure this path matches your folder structure exactly -->
         <receiver
             android:name=".ReminderSupportingFilesStage1.ChecklistReminderReceiver"
             android:enabled="true"

@@ -6,9 +6,9 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
-import com.example.remind_ai.caregiver.CaregiverHomeActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import com.example.remind_ai.caregiver.CaregiverHomeActivity
 
 class RoleSelectionActivity : AppCompatActivity() {
 
@@ -45,9 +45,6 @@ class RoleSelectionActivity : AppCompatActivity() {
             return
         }
 
-        btnPatient.isEnabled = false
-        btnCaregiver.isEnabled = false
-
         database.reference
             .child("users")
             .child(uid)
@@ -56,19 +53,14 @@ class RoleSelectionActivity : AppCompatActivity() {
             .addOnSuccessListener {
                 Toast.makeText(this, "Role selected: $role", Toast.LENGTH_SHORT).show()
 
-                val intent = if (role == "patient") {
-                    Intent(this@RoleSelectionActivity, StageDetectionActivity::class.java)
+                if (role == "patient") {
+                    startActivity(Intent(this, StageDetectionActivity::class.java))
                 } else {
-                    Intent(this@RoleSelectionActivity, CaregiverHomeActivity::class.java)
+                    startActivity(Intent(this, CaregiverHomeActivity::class.java))
                 }
-
-                startActivity(intent)
                 finish()
             }
             .addOnFailureListener { e ->
-                btnPatient.isEnabled = true
-                btnCaregiver.isEnabled = true
-
                 Toast.makeText(
                     this,
                     "Failed to save role: ${e.message}",

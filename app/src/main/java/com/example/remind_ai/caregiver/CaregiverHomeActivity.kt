@@ -1,6 +1,7 @@
 package com.example.remind_ai.caregiver
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -16,17 +17,16 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import com.example.remind_ai.R
+import com.example.remind_ai.Stage3.Stage3DashboardActivity
 import com.google.android.material.button.MaterialButton
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 
 class CaregiverHomeActivity : AppCompatActivity() {
 
     private lateinit var auth: FirebaseAuth
-    private lateinit var database: FirebaseDatabase
+    private lateinit var firestore: FirebaseFirestore
 
     private lateinit var btnProfile: ImageButton
     private lateinit var tvTotalPatients: TextView
@@ -36,12 +36,28 @@ class CaregiverHomeActivity : AppCompatActivity() {
     private lateinit var btnAddPatient: MaterialButton
     private lateinit var patientListContainer: LinearLayout
 
+    private var linkedPatientsListener: ListenerRegistration? = null
+    private val patientListeners = mutableListOf<ListenerRegistration>()
+    private val alertListeners = mutableListOf<ListenerRegistration>()
+
+    private val linkedPatientIds = mutableSetOf<String>()
+    private val patientCards = mutableMapOf<String, PatientCardData>()
+    private val patientAlertCounts = mutableMapOf<String, Int>()
+
+    data class PatientCardData(
+        val patientId: String,
+        val patientName: String,
+        val stage: String,
+        val status: String,
+        val lastUpdated: String
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_caregiverhome)
 
         auth = FirebaseAuth.getInstance()
-        database = FirebaseDatabase.getInstance()
+        firestore = FirebaseFirestore.getInstance()
 
         btnProfile = findViewById(R.id.btnProfile)
         tvTotalPatients = findViewById(R.id.tvTotalPatients)
@@ -62,10 +78,16 @@ class CaregiverHomeActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        loadAssignedPatients()
+        loadAssignedPatientsRealtime()
     }
 
-    private fun loadAssignedPatients() {
+    override fun onStop() {
+        super.onStop()
+        linkedPatientsListener?.remove()
+        clearPatientRealtimeListeners()
+    }
+
+    private fun loadAssignedPatientsRealtime() {
         val caregiverUid = auth.currentUser?.uid
 
         if (caregiverUid == null) {
@@ -73,81 +95,133 @@ class CaregiverHomeActivity : AppCompatActivity() {
             return
         }
 
-        val assignedPatientsRef = database.reference
-            .child("caregivers")
-            .child(caregiverUid)
-            .child("assigned_patients")
+        linkedPatientsListener?.remove()
+        clearPatientRealtimeListeners()
 
-        assignedPatientsRef.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                patientListContainer.removeAllViews()
-
-                if (!snapshot.exists() || snapshot.childrenCount == 0L) {
-                    tvTotalPatients.text = "0"
-                    tvActiveAlerts.text = "0"
-                    tvStableNow.text = "0"
-                    emptyPatientsCard.visibility = View.VISIBLE
-                    return
+        linkedPatientsListener = firestore.collection("caregivers")
+            .document(caregiverUid)
+            .collection("linkedPatients")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Toast.makeText(this, "Failed to load patients: ${error.message}", Toast.LENGTH_SHORT).show()
+                    return@addSnapshotListener
                 }
 
-                emptyPatientsCard.visibility = View.GONE
+                linkedPatientIds.clear()
+                patientCards.clear()
+                patientAlertCounts.clear()
+                clearPatientRealtimeListeners()
 
-                val totalPatients = snapshot.childrenCount.toInt()
-                var activeAlertsCount = 0
-                var stableCount = 0
-
-                for (patientSnapshot in snapshot.children) {
-                    val patientId = patientSnapshot.child("patientId").getValue(String::class.java) ?: continue
-                    val patientName = patientSnapshot.child("patientName").getValue(String::class.java) ?: "Unknown Patient"
-                    val stage = patientSnapshot.child("stage").getValue(String::class.java) ?: "Stage not set"
-
-                    val patientRef = database.reference.child("patients").child(patientId)
-
-                    patientRef.addListenerForSingleValueEvent(object : ValueEventListener {
-                        override fun onDataChange(patientData: DataSnapshot) {
-                            val status = patientData.child("status").getValue(String::class.java) ?: "Stable"
-                            val alertCount = patientData.child("alertCount").getValue(Int::class.java) ?: 0
-                            val lastUpdated = patientData.child("lastUpdated").getValue(String::class.java) ?: "Just now"
-
-                            if (alertCount > 0) activeAlertsCount++
-                            if (status.equals("Stable", ignoreCase = true)) stableCount++
-
-                            tvTotalPatients.text = totalPatients.toString()
-                            tvActiveAlerts.text = activeAlertsCount.toString()
-                            tvStableNow.text = stableCount.toString()
-
-                            addPatientCard(
-                                patientId = patientId,
-                                patientName = patientName,
-                                stage = stage,
-                                status = status,
-                                alertCount = alertCount,
-                                lastUpdated = lastUpdated
-                            )
-                        }
-
-                        override fun onCancelled(error: DatabaseError) {
-                            addPatientCard(
-                                patientId = patientId,
-                                patientName = patientName,
-                                stage = stage,
-                                status = "Stable",
-                                alertCount = 0,
-                                lastUpdated = "Just now"
-                            )
-                        }
-                    })
+                if (snapshot == null || snapshot.isEmpty) {
+                    renderPatientCards()
+                    return@addSnapshotListener
                 }
+
+                for (doc in snapshot.documents) {
+                    val patientId = doc.getString("patientId") ?: doc.id
+                    linkedPatientIds.add(patientId)
+                    listenToPatient(patientId)
+                    listenToPatientAlerts(patientId)
+                }
+
+                renderPatientCards()
+            }
+    }
+
+    private fun listenToPatient(patientId: String) {
+        val listener = firestore.collection("patients")
+            .document(patientId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+
+                val patientName =
+                    snapshot.getString("fullName")
+                        ?: snapshot.getString("name")
+                        ?: "Unknown Patient"
+
+                val stageValue = snapshot.get("stage")
+                val stage = when (stageValue) {
+                    is Number -> "Stage ${stageValue.toInt()}"
+                    is String -> stageValue
+                    else -> "Stage 3"
+                }
+
+                val status = snapshot.getString("status") ?: "Stable"
+                val lastUpdated = snapshot.getString("lastUpdated") ?: "Just now"
+
+                patientCards[patientId] = PatientCardData(
+                    patientId = patientId,
+                    patientName = patientName,
+                    stage = stage,
+                    status = status,
+                    lastUpdated = lastUpdated
+                )
+
+                renderPatientCards()
             }
 
-            override fun onCancelled(error: DatabaseError) {
-                Toast.makeText(
-                    this@CaregiverHomeActivity,
-                    "Failed to load patients: ${error.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+        patientListeners.add(listener)
+    }
+
+    private fun listenToPatientAlerts(patientId: String) {
+        val listener = firestore.collection("patient_alerts")
+            .whereEqualTo("patientId", patientId)
+            .whereEqualTo("status", "active")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+
+                patientAlertCounts[patientId] = snapshot.size()
+                renderPatientCards()
             }
-        })
+
+        alertListeners.add(listener)
+    }
+
+    private fun renderPatientCards() {
+        patientListContainer.removeAllViews()
+
+        if (linkedPatientIds.isEmpty()) {
+            tvTotalPatients.text = "0"
+            tvActiveAlerts.text = "0"
+            tvStableNow.text = "0"
+            emptyPatientsCard.visibility = View.VISIBLE
+            return
+        }
+
+        emptyPatientsCard.visibility = View.GONE
+
+        val totalPatients = linkedPatientIds.size
+        val activeAlertsCount = patientAlertCounts.values.sum()
+        val stableCount = linkedPatientIds.count { patientId ->
+            val patient = patientCards[patientId]
+            val alerts = patientAlertCounts[patientId] ?: 0
+            patient?.status.equals("Stable", ignoreCase = true) && alerts == 0
+        }
+
+        tvTotalPatients.text = totalPatients.toString()
+        tvActiveAlerts.text = activeAlertsCount.toString()
+        tvStableNow.text = stableCount.toString()
+
+        for (patientId in linkedPatientIds) {
+            val patient = patientCards[patientId] ?: continue
+            val alertCount = patientAlertCounts[patientId] ?: 0
+
+            addPatientCard(
+                patientId = patient.patientId,
+                patientName = patient.patientName,
+                stage = patient.stage,
+                status = patient.status,
+                alertCount = alertCount,
+                lastUpdated = patient.lastUpdated
+            )
+        }
+    }
+
+    private fun clearPatientRealtimeListeners() {
+        patientListeners.forEach { it.remove() }
+        alertListeners.forEach { it.remove() }
+        patientListeners.clear()
+        alertListeners.clear()
     }
 
     private fun addPatientCard(
@@ -200,9 +274,7 @@ class CaregiverHomeActivity : AppCompatActivity() {
         }
 
         val iconParams = RelativeLayout.LayoutParams(dpToPx(60f).toInt(), dpToPx(60f).toInt())
-        if (alertCount > 0) {
-            iconParams.topMargin = dpToPx(16f).toInt()
-        }
+        if (alertCount > 0) iconParams.topMargin = dpToPx(16f).toInt()
         patientIcon.layoutParams = iconParams
         root.addView(patientIcon)
 
@@ -217,9 +289,7 @@ class CaregiverHomeActivity : AppCompatActivity() {
         )
         infoParams.addRule(RelativeLayout.END_OF, patientIcon.id)
         infoParams.marginStart = dpToPx(14f).toInt()
-        if (alertCount > 0) {
-            infoParams.topMargin = dpToPx(16f).toInt()
-        }
+        if (alertCount > 0) infoParams.topMargin = dpToPx(16f).toInt()
         infoLayout.layoutParams = infoParams
 
         val tvName = TextView(this).apply {
@@ -263,7 +333,7 @@ class CaregiverHomeActivity : AppCompatActivity() {
             textSize = 14f
             isAllCaps = false
             cornerRadius = dpToPx(22f).toInt()
-            setBackgroundColor(Color.parseColor("#6F54B5"))
+            backgroundTintList = ColorStateList.valueOf(Color.parseColor("#6F54B5"))
         }
 
         val buttonParams = RelativeLayout.LayoutParams(dpToPx(100f).toInt(), dpToPx(46f).toInt())
@@ -272,17 +342,10 @@ class CaregiverHomeActivity : AppCompatActivity() {
         btnOpen.layoutParams = buttonParams
 
         btnOpen.setOnClickListener {
-            Toast.makeText(
-                this,
-                "Open dashboard for $patientName",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            // Replace this later with your real patient dashboard screen
-            // Example:
-            // val intent = Intent(this, Stage3CaregiverDashboardActivity::class.java)
-            // intent.putExtra("patientId", patientId)
-            // startActivity(intent)
+            val intent = Intent(this, Stage3DashboardActivity::class.java)
+            intent.putExtra("patientId", patientId)
+            intent.putExtra("patientName", patientName)
+            startActivity(intent)
         }
 
         root.addView(btnOpen)
