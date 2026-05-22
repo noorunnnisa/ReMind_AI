@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ================= PERMISSIONS ================= -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Alarms ke liye zaroori permissions -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" /> <!-- Android 14+ ke liye zaroori -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Storage Android 12 and below -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Android 13+ media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="RemindAI"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RemindAI"
+        tools:targetApi="31">
+
+        <!-- ================= LAUNCHER ACTIVITY ================= -->
+        <activity
+            android:name=".activities.SplashActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ================= AUTH FLOW ================= -->
+        <activity android:name=".activities.LoginActivity" android:exported="false" />
+        <activity android:name=".activities.RegisterActivity" android:exported="false" />
+        <activity android:name=".activities.RoleSelectionActivity" android:exported="false" />
+        <activity android:name=".activities.StageDetectionActivity" android:exported="false" />
+        <!-- ================= STAGE 1 ================= -->
+        <activity android:name=".stage1.Stage1Activity" android:exported="false" />
+        <activity android:name=".stage1.AddReminderS1Activity" android:exported="false" />
+        <activity android:name=".stage1.VoiceAssistantS1Activity" android:exported="false" />
+        <activity android:name=".stage1.RoutineChecklistActivity" android:exported="false" />
+        <activity android:name=".stage1.QuickThoughtsActivity" android:exported="false" />
+        <activity android:name=".stage1.MyJournalActivity" android:exported="false" />
+        <activity android:name=".stage1.PersonalChatbotS1Activity" android:exported="false" />
+
+        <!-- ================= STAGE 2 ================= -->
+        <activity android:name=".stage2.Stage2DashboardActivity" android:exported="false" />
+
+        <!-- ================= STAGE 3 ================= -->
+        <activity android:name=".Stage3.Stage3DashboardActivity" android:exported="false" />
+        <activity android:name=".Stage3.BehaviorHealthLogsC3Activity" android:exported="false" />
+        <activity android:name=".Stage3.DailyChecklistC3Activity" android:exported="false" />
+        <activity android:name=".Stage3.SoothingContentC3Activity" android:exported="false" />
+        <activity android:name=".Stage3.PatientStage3Activity" android:exported="false" />
+
+        <!-- ================= RECEIVERS ================= -->
+
+        <!-- 1. General Reminder Receiver -->
+        <receiver
+            android:name=".ReminderSupportingFilesStage1.ReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- 2. Checklist Reminder Receiver -->
+        <!-- Note: Ensure this path matches your folder structure exactly -->
+        <receiver
+            android:name=".ReminderSupportingFilesStage1.ChecklistReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+    </application>
+
+</manifest>
