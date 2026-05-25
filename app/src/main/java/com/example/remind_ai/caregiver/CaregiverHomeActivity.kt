@@ -185,10 +185,12 @@ class CaregiverHomeActivity : AppCompatActivity() {
             tvActiveAlerts.text = "0"
             tvStableNow.text = "0"
             emptyPatientsCard.visibility = View.VISIBLE
+            patientListContainer.visibility = View.GONE
             return
         }
 
         emptyPatientsCard.visibility = View.GONE
+        patientListContainer.visibility = View.VISIBLE
 
         val totalPatients = linkedPatientIds.size
         val activeAlertsCount = patientAlertCounts.values.sum()

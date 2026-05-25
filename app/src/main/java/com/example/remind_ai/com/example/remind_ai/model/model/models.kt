@@ -118,13 +118,15 @@ data class ThoughtModel(
 )
 
 data class SoothingContent(
-    val id: String = "",
-    val patientId: String = "",
-    val caregiverId: String = "",
-    val title: String = "",
-    val type: String = "",   // audio, image, video, quran
-    val description: String = "",
-    val fileUrl: String = "",
-    val fileName: String = "",
-    val uploadedAt: Long = 0L
+    var id: String = "",
+    var title: String = "",
+    var description: String = "",
+    var type: String = "",
+    var fileUrl: String = "",
+    var createdAt: Long = 0L
+)
+
+data class SurahItem(
+    val number: Int,
+    val name: String
 )

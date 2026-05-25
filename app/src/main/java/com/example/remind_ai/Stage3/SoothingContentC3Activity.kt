@@ -2,419 +2,479 @@ package com.example.remind_ai.Stage3
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Typeface
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
 import android.widget.ArrayAdapter
-import android.widget.ImageView
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import com.example.remind_ai.model.SoothingContent
+import com.google.firebase.database.ValueEventListener
 
+data class SoothingContent(
+    var id: String = "",
+    var title: String = "",
+    var description: String = "",
+    var type: String = "",
+    var fileUrl: String = "",
+    var createdAt: Long = 0L
+)
 
-class SoothingContentC3Activity : AppCompatActivity() {
+data class SurahItem(val number: Int, val name: String)
+data class DuaAudioItem(val title: String, val description: String, val fileUrl: String)
 
-    private lateinit var btnBack: ImageView
+class SoothingContentCaretakerActivity : AppCompatActivity() {
+
+    private lateinit var comfortLibraryLayout: LinearLayout
     private lateinit var tvNowPlayingTitle: TextView
     private lateinit var tvNowPlayingSubtitle: TextView
     private lateinit var tvPlayerStatus: TextView
     private lateinit var tvDuration: TextView
-    private lateinit var btnPlayNow: MaterialButton
-    private lateinit var btnStop: MaterialButton
-    private lateinit var btnAddContent: MaterialButton
-    private lateinit var btnPlaySurah: MaterialButton
     private lateinit var spSurah: Spinner
 
-    private lateinit var cardCalmMusic: MaterialCardView
-    private lateinit var cardFamilyPhotos: MaterialCardView
-    private lateinit var cardGentleVideo: MaterialCardView
-    private lateinit var cardFavoriteDua: MaterialCardView
-
-    private val dbRef = FirebaseDatabase.getInstance().reference
-    private val storage = FirebaseStorage.getInstance()
+    private val contentRef = FirebaseDatabase.getInstance().reference.child("soothing_content")
 
     private var mediaPlayer: MediaPlayer? = null
+    private var lastSelectedContent: SoothingContent? = null
 
-    private var selectedTitle = ""
-    private var selectedType = ""
-    private var selectedDescription = ""
-    private var selectedDuration = ""
-    private var selectedUrl = ""
+    private val surahList = listOf(
+        SurahItem(1, "Al-Fatiha"), SurahItem(2, "Al-Baqarah"), SurahItem(3, "Aal-Imran"),
+        SurahItem(4, "An-Nisa"), SurahItem(5, "Al-Ma'idah"), SurahItem(6, "Al-An'am"),
+        SurahItem(7, "Al-A'raf"), SurahItem(8, "Al-Anfal"), SurahItem(9, "At-Tawbah"),
+        SurahItem(10, "Yunus"), SurahItem(11, "Hud"), SurahItem(12, "Yusuf"),
+        SurahItem(13, "Ar-Ra'd"), SurahItem(14, "Ibrahim"), SurahItem(15, "Al-Hijr"),
+        SurahItem(16, "An-Nahl"), SurahItem(17, "Al-Isra"), SurahItem(18, "Al-Kahf"),
+        SurahItem(19, "Maryam"), SurahItem(20, "Ta-Ha"), SurahItem(21, "Al-Anbiya"),
+        SurahItem(22, "Al-Hajj"), SurahItem(23, "Al-Mu'minun"), SurahItem(24, "An-Nur"),
+        SurahItem(25, "Al-Furqan"), SurahItem(26, "Ash-Shu'ara"), SurahItem(27, "An-Naml"),
+        SurahItem(28, "Al-Qasas"), SurahItem(29, "Al-Ankabut"), SurahItem(30, "Ar-Rum"),
+        SurahItem(31, "Luqman"), SurahItem(32, "As-Sajdah"), SurahItem(33, "Al-Ahzab"),
+        SurahItem(34, "Saba"), SurahItem(35, "Fatir"), SurahItem(36, "Ya-Sin"),
+        SurahItem(37, "As-Saffat"), SurahItem(38, "Sad"), SurahItem(39, "Az-Zumar"),
+        SurahItem(40, "Ghafir"), SurahItem(41, "Fussilat"), SurahItem(42, "Ash-Shura"),
+        SurahItem(43, "Az-Zukhruf"), SurahItem(44, "Ad-Dukhan"), SurahItem(45, "Al-Jathiyah"),
+        SurahItem(46, "Al-Ahqaf"), SurahItem(47, "Muhammad"), SurahItem(48, "Al-Fath"),
+        SurahItem(49, "Al-Hujurat"), SurahItem(50, "Qaf"), SurahItem(51, "Adh-Dhariyat"),
+        SurahItem(52, "At-Tur"), SurahItem(53, "An-Najm"), SurahItem(54, "Al-Qamar"),
+        SurahItem(55, "Ar-Rahman"), SurahItem(56, "Al-Waqi'ah"), SurahItem(57, "Al-Hadid"),
+        SurahItem(58, "Al-Mujadilah"), SurahItem(59, "Al-Hashr"), SurahItem(60, "Al-Mumtahanah"),
+        SurahItem(61, "As-Saff"), SurahItem(62, "Al-Jumu'ah"), SurahItem(63, "Al-Munafiqun"),
+        SurahItem(64, "At-Taghabun"), SurahItem(65, "At-Talaq"), SurahItem(66, "At-Tahrim"),
+        SurahItem(67, "Al-Mulk"), SurahItem(68, "Al-Qalam"), SurahItem(69, "Al-Haqqah"),
+        SurahItem(70, "Al-Ma'arij"), SurahItem(71, "Nuh"), SurahItem(72, "Al-Jinn"),
+        SurahItem(73, "Al-Muzzammil"), SurahItem(74, "Al-Muddaththir"), SurahItem(75, "Al-Qiyamah"),
+        SurahItem(76, "Al-Insan"), SurahItem(77, "Al-Mursalat"), SurahItem(78, "An-Naba"),
+        SurahItem(79, "An-Nazi'at"), SurahItem(80, "Abasa"), SurahItem(81, "At-Takwir"),
+        SurahItem(82, "Al-Infitar"), SurahItem(83, "Al-Mutaffifin"), SurahItem(84, "Al-Inshiqaq"),
+        SurahItem(85, "Al-Buruj"), SurahItem(86, "At-Tariq"), SurahItem(87, "Al-A'la"),
+        SurahItem(88, "Al-Ghashiyah"), SurahItem(89, "Al-Fajr"), SurahItem(90, "Al-Balad"),
+        SurahItem(91, "Ash-Shams"), SurahItem(92, "Al-Layl"), SurahItem(93, "Ad-Duha"),
+        SurahItem(94, "Ash-Sharh"), SurahItem(95, "At-Tin"), SurahItem(96, "Al-Alaq"),
+        SurahItem(97, "Al-Qadr"), SurahItem(98, "Al-Bayyinah"), SurahItem(99, "Az-Zalzalah"),
+        SurahItem(100, "Al-Adiyat"), SurahItem(101, "Al-Qari'ah"), SurahItem(102, "At-Takathur"),
+        SurahItem(103, "Al-Asr"), SurahItem(104, "Al-Humazah"), SurahItem(105, "Al-Fil"),
+        SurahItem(106, "Quraysh"), SurahItem(107, "Al-Ma'un"), SurahItem(108, "Al-Kawthar"),
+        SurahItem(109, "Al-Kafirun"), SurahItem(110, "An-Nasr"), SurahItem(111, "Al-Masad"),
+        SurahItem(112, "Al-Ikhlas"), SurahItem(113, "Al-Falaq"), SurahItem(114, "An-Nas")
+    )
 
-    private var uploadType = "audio"
-    private var selectedFileName = ""
-
-    private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            uploadContentToFirebaseStorage(uri)
-        }
-    }
+    private val duaAudioList = listOf(
+        DuaAudioItem("Ayat-ul-Kursi", "Protection and calm", quranAyahAudioUrl(262)),
+        DuaAudioItem("Rabbana Atina", "Dua for goodness", quranAyahAudioUrl(208)),
+        DuaAudioItem("Last Ayah of Baqarah", "Dua for mercy", quranAyahAudioUrl(293)),
+        DuaAudioItem("Rabbana La Tuzigh Quloobana", "Dua for heart stability", quranAyahAudioUrl(301)),
+        DuaAudioItem("Rabbana Zalamna Anfusana", "Dua for forgiveness", quranAyahAudioUrl(977)),
+        DuaAudioItem("Rabbi Zidni Ilma", "Dua for knowledge", quranAyahAudioUrl(2353)),
+        DuaAudioItem("Rabbi Inni Massaniyad Durr", "Dua in hardship", quranAyahAudioUrl(2466)),
+        DuaAudioItem("La ilaha illa Anta Subhanaka", "Dua of Yunus AS", quranAyahAudioUrl(2470)),
+        DuaAudioItem("Rabbi Ishrah Li Sadri", "Dua for ease", quranAyahAudioUrl(2273)),
+        DuaAudioItem("Rabbi Inni Lima Anzalta", "Dua for need", quranAyahAudioUrl(3176))
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_soothingcontent_c03)
+        setContentView(R.layout.soothingcontentcaretaker)
 
-        btnBack = findViewById(R.id.btnBack)
+        comfortLibraryLayout = findViewById(R.id.comfortLibraryLayout)
         tvNowPlayingTitle = findViewById(R.id.tvNowPlayingTitle)
         tvNowPlayingSubtitle = findViewById(R.id.tvNowPlayingSubtitle)
         tvPlayerStatus = findViewById(R.id.tvPlayerStatus)
         tvDuration = findViewById(R.id.tvDuration)
-        btnPlayNow = findViewById(R.id.btnPlayNow)
-        btnStop = findViewById(R.id.btnStop)
-        btnAddContent = findViewById(R.id.btnAddContent)
-        btnPlaySurah = findViewById(R.id.btnPlaySurah)
         spSurah = findViewById(R.id.spSurah)
 
-        cardCalmMusic = findViewById(R.id.cardCalmMusic)
-        cardFamilyPhotos = findViewById(R.id.cardFamilyPhotos)
-        cardGentleVideo = findViewById(R.id.cardGentleVideo)
-        cardFavoriteDua = findViewById(R.id.cardFavoriteDua)
-
         setupSurahSpinner()
-        createDefaultContent()
-        loadContentFromRealtimeDatabase("favorite_dua")
-
-        btnBack.setOnClickListener {
-            finish()
-        }
-
-        cardCalmMusic.setOnClickListener {
-            loadContentFromRealtimeDatabase("calm_music")
-        }
-
-        cardFamilyPhotos.setOnClickListener {
-            loadContentFromRealtimeDatabase("family_photos")
-        }
-
-        cardGentleVideo.setOnClickListener {
-            loadContentFromRealtimeDatabase("gentle_video")
-        }
-
-        cardFavoriteDua.setOnClickListener {
-            loadContentFromRealtimeDatabase("favorite_dua")
-        }
-
-        btnPlayNow.setOnClickListener {
-            playSelectedContent()
-        }
-
-        btnStop.setOnClickListener {
-            stopContent()
-        }
-
-        btnAddContent.setOnClickListener {
-            showUploadOptions()
-        }
-
-        btnPlaySurah.setOnClickListener {
-            playSelectedSurah()
-        }
+        setupClicks()
+        listenForLibrary()
     }
 
     private fun setupSurahSpinner() {
-        val surahs = (1..114).map { "Surah $it" }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, surahs)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spSurah.adapter = adapter
+        spSurah.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            surahList.map { "${it.number}. ${it.name}" }
+        )
     }
 
-    private fun createDefaultContent() {
-        val defaultContent = listOf(
-            SoothingContent(
-                id = "calm_music",
-                patientId = "patient_demo",
-                caregiverId = "caregiver_demo",
-                title = "Calm Music",
-                type = "audio",
-                description = "Soft sounds for relaxation",
-                fileUrl = "",
-                fileName = "",
-                uploadedAt = System.currentTimeMillis()
-            ),
-            SoothingContent(
-                id = "family_photos",
-                patientId = "patient_demo",
-                caregiverId = "caregiver_demo",
-                title = "Family Photos",
-                type = "image",
-                description = "Familiar faces and memories",
-                fileUrl = "",
-                fileName = "",
-                uploadedAt = System.currentTimeMillis()
-            ),
-            SoothingContent(
-                id = "gentle_video",
-                patientId = "patient_demo",
-                caregiverId = "caregiver_demo",
-                title = "Gentle Video",
-                type = "video",
-                description = "Peaceful visuals for comfort",
-                fileUrl = "",
-                fileName = "",
-                uploadedAt = System.currentTimeMillis()
-            ),
-            SoothingContent(
-                id = "favorite_dua",
-                patientId = "patient_demo",
-                caregiverId = "caregiver_demo",
-                title = "Favorite Dua",
-                type = "audio",
-                description = "Spiritual comfort content",
-                fileUrl = "",
-                fileName = "",
-                uploadedAt = System.currentTimeMillis()
-            )
-        )
+    private fun setupClicks() {
+        findViewById<View>(R.id.btnBack).setOnClickListener {
+            finish()
+        }
 
-        for (content in defaultContent) {
-            dbRef.child("soothing_content")
-                .child(content.id)
-                .get()
-                .addOnSuccessListener { snapshot ->
-                    if (!snapshot.exists()) {
-                        dbRef.child("soothing_content")
-                            .child(content.id)
-                            .setValue(content)
-                    }
-                }
+        findViewById<View>(R.id.btnPlaySurah).setOnClickListener {
+            val surah = surahList[spSurah.selectedItemPosition]
+            val content = SoothingContent(
+                id = contentRef.push().key ?: return@setOnClickListener,
+                title = "Surah ${surah.name}",
+                description = "Quran recitation",
+                type = "quran",
+                fileUrl = quranSurahAudioUrl(surah.number),
+                createdAt = System.currentTimeMillis()
+            )
+
+            saveContent(content)
+            playContentOnCaretaker(content)
+            Toast.makeText(this, "Surah play ho rahi hai", Toast.LENGTH_SHORT).show()
+        }
+
+        findViewById<View>(R.id.btnPlayNow).setOnClickListener {
+            val content = lastSelectedContent
+            if (content == null) {
+                Toast.makeText(this, "Pehle content select karein", Toast.LENGTH_SHORT).show()
+            } else {
+                playContentOnCaretaker(content)
+            }
+        }
+
+        findViewById<View>(R.id.btnStop).setOnClickListener {
+            stopAudio()
+            tvPlayerStatus.text = "Stopped"
+        }
+
+        findViewById<View>(R.id.btnAddContent).setOnClickListener {
+            showTypePicker()
         }
     }
 
-    private fun loadContentFromRealtimeDatabase(contentId: String) {
-        dbRef.child("soothing_content")
-            .child(contentId)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val content = snapshot.getValue(SoothingContent::class.java)
-
-                if (content == null) {
-                    Toast.makeText(this, "Content not found", Toast.LENGTH_SHORT).show()
-                    return@addOnSuccessListener
-                }
-
-                selectedTitle = content.title
-                selectedType = content.type
-                selectedDescription = content.description
-                selectedDuration = when (content.type) {
-                    "image" -> "Photo"
-                    "video" -> "Video"
-                    "audio" -> "Audio"
-                    else -> "Content"
-                }
-                selectedUrl = content.fileUrl
-
-                tvNowPlayingTitle.text = selectedTitle
-                tvNowPlayingSubtitle.text = selectedDescription
-                tvDuration.text = selectedDuration
-                tvPlayerStatus.text = "Ready to play"
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun showUploadOptions() {
-        val options = arrayOf("Upload Audio", "Upload Photo", "Upload Video")
+    private fun showTypePicker() {
+        val types = arrayOf(
+            "Audio Dua",
+            "Text Dua",
+            "Picture URL",
+            "Video URL",
+            "Audio / Music URL"
+        )
 
         AlertDialog.Builder(this)
             .setTitle("Add Comfort Content")
-            .setItems(options) { _, which ->
+            .setItems(types) { _, which ->
                 when (which) {
-                    0 -> {
-                        uploadType = "audio"
-                        filePicker.launch("audio/*")
-                    }
-                    1 -> {
-                        uploadType = "image"
-                        filePicker.launch("image/*")
-                    }
-                    2 -> {
-                        uploadType = "video"
-                        filePicker.launch("video/*")
-                    }
+                    0 -> showAudioDuaPicker()
+                    1 -> showAddContentDialog("dua")
+                    2 -> showAddContentDialog("image")
+                    3 -> showAddContentDialog("video")
+                    4 -> showAddContentDialog("audio")
                 }
             }
             .show()
     }
 
-    private fun uploadContentToFirebaseStorage(uri: Uri) {
-        tvPlayerStatus.text = "Uploading content..."
+    private fun showAudioDuaPicker() {
+        AlertDialog.Builder(this)
+            .setTitle("Select Audio Dua")
+            .setItems(duaAudioList.map { it.title }.toTypedArray()) { _, which ->
+                val dua = duaAudioList[which]
+                val content = SoothingContent(
+                    id = contentRef.push().key ?: return@setItems,
+                    title = dua.title,
+                    description = dua.description,
+                    type = "dua_audio",
+                    fileUrl = dua.fileUrl,
+                    createdAt = System.currentTimeMillis()
+                )
 
-        selectedFileName = "soothing_content/${System.currentTimeMillis()}_$uploadType"
-        val storageRef = storage.reference.child(selectedFileName)
-
-        storageRef.putFile(uri)
-            .continueWithTask { task ->
-                if (!task.isSuccessful) {
-                    throw task.exception ?: Exception("Upload failed")
-                }
-                storageRef.downloadUrl
+                saveContent(content)
+                playContentOnCaretaker(content)
             }
-            .addOnSuccessListener { downloadUri ->
-                saveUploadedContentToRealtimeDatabase(downloadUri.toString())
-            }
-            .addOnFailureListener { e ->
-                tvPlayerStatus.text = "Upload failed"
-                Toast.makeText(this, "Upload failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
+            .show()
     }
 
-    private fun saveUploadedContentToRealtimeDatabase(fileUrl: String) {
-        val contentId = dbRef.child("soothing_content").push().key
+    private fun showAddContentDialog(type: String) {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_add_soothing_content, null)
 
-        if (contentId == null) {
-            Toast.makeText(this, "Failed to create content ID", Toast.LENGTH_SHORT).show()
+        val etTitle = view.findViewById<EditText>(R.id.etTitle)
+        val etSubtitle = view.findViewById<EditText>(R.id.etSubtitle)
+        val etText = view.findViewById<EditText>(R.id.etText)
+        val etFileUrl = view.findViewById<EditText>(R.id.etFileUrl)
+
+        if (type == "dua") {
+            etText.visibility = View.VISIBLE
+            etFileUrl.visibility = View.GONE
+        } else {
+            etText.visibility = View.GONE
+            etFileUrl.visibility = View.VISIBLE
+            etFileUrl.hint = when (type) {
+                "image" -> "Picture URL"
+                "video" -> "Video URL"
+                else -> "Audio URL"
+            }
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Content Details")
+            .setView(view)
+            .setPositiveButton("Save", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val title = etTitle.text.toString().trim()
+                val subtitle = etSubtitle.text.toString().trim()
+                val text = etText.text.toString().trim()
+                val fileUrl = etFileUrl.text.toString().trim()
+
+                if (title.isEmpty()) {
+                    etTitle.error = "Title required"
+                    return@setOnClickListener
+                }
+
+                if (type != "dua" && fileUrl.isEmpty()) {
+                    etFileUrl.error = "URL required"
+                    return@setOnClickListener
+                }
+
+                val content = SoothingContent(
+                    id = contentRef.push().key ?: return@setOnClickListener,
+                    title = title,
+                    description = if (type == "dua") text.ifEmpty { subtitle } else subtitle.ifEmpty { type },
+                    type = type,
+                    fileUrl = if (type == "dua") "" else fileUrl,
+                    createdAt = System.currentTimeMillis()
+                )
+
+                dialog.dismiss()
+                saveContent(content)
+                playContentOnCaretaker(content)
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun saveContent(content: SoothingContent) {
+        contentRef.child(content.id).setValue(content)
+        lastSelectedContent = content
+        updateNowPlaying(content)
+    }
+
+    private fun listenForLibrary() {
+        contentRef.orderByChild("createdAt")
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val items = snapshot.children
+                        .mapNotNull { it.getValue(SoothingContent::class.java) }
+                        .reversed()
+
+                    renderLibrary(items)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Toast.makeText(
+                        this@SoothingContentCaretakerActivity,
+                        error.message,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            })
+    }
+
+    private fun renderLibrary(items: List<SoothingContent>) {
+        comfortLibraryLayout.removeAllViews()
+
+        if (items.isEmpty()) {
+            val emptyText = TextView(this).apply {
+                text = "No comfort content added yet"
+                textSize = 15f
+                setTextColor(0xFF6E7E8C.toInt())
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            comfortLibraryLayout.addView(emptyText)
             return
         }
 
-        val title = when (uploadType) {
-            "audio" -> "Uploaded Calm Audio"
-            "image" -> "Uploaded Family Photo"
-            "video" -> "Uploaded Gentle Video"
-            else -> "Uploaded Content"
-        }
-
-        val content = SoothingContent(
-            id = contentId,
-            patientId = "patient_demo",
-            caregiverId = "caregiver_demo",
-            title = title,
-            type = uploadType,
-            description = "Caregiver uploaded comfort content",
-            fileUrl = fileUrl,
-            fileName = selectedFileName,
-            uploadedAt = System.currentTimeMillis()
-        )
-
-        dbRef.child("soothing_content")
-            .child(contentId)
-            .setValue(content)
-            .addOnSuccessListener {
-                selectedTitle = content.title
-                selectedType = content.type
-                selectedDescription = content.description
-                selectedDuration = when (content.type) {
-                    "image" -> "Photo"
-                    "video" -> "Video"
-                    "audio" -> "Audio"
-                    else -> "Content"
+        items.forEach { item ->
+            val card = MaterialCardView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(12))
                 }
-                selectedUrl = content.fileUrl
 
-                tvNowPlayingTitle.text = selectedTitle
-                tvNowPlayingSubtitle.text = selectedDescription
-                tvDuration.text = selectedDuration
-                tvPlayerStatus.text = "Uploaded and ready"
+                radius = dp(18).toFloat()
+                cardElevation = dp(2).toFloat()
 
-                Toast.makeText(this, "Content saved", Toast.LENGTH_SHORT).show()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun playSelectedSurah() {
-        val surahNumber = spSurah.selectedItemPosition + 1
-        tvPlayerStatus.text = "Loading Surah $surahNumber..."
-
-        Thread {
-            try {
-                val apiUrl = "https://quranapi.pages.dev/api/audio/$surahNumber.json"
-                val connection = URL(apiUrl).openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-
-                val response = connection.inputStream.bufferedReader().readText()
-                val json = JSONObject(response)
-
-                val reciterOne = json.getJSONObject("1")
-                val audioUrl = reciterOne.getString("originalUrl")
-
-                runOnUiThread {
-                    selectedTitle = "Surah $surahNumber Recitation"
-                    selectedType = "quran"
-                    selectedDescription = "Quran recitation"
-                    selectedDuration = "Surah Audio"
-                    selectedUrl = audioUrl
-
-                    tvNowPlayingTitle.text = selectedTitle
-                    tvNowPlayingSubtitle.text = selectedDescription
-                    tvDuration.text = selectedDuration
-
-                    playAudioUrl(audioUrl)
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    tvPlayerStatus.text = "Unable to load Surah"
-                    Toast.makeText(this, "Quran API failed: ${e.message}", Toast.LENGTH_LONG).show()
+                setOnClickListener {
+                    playContentOnCaretaker(item)
                 }
             }
-        }.start()
+
+            val column = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+            }
+
+            val title = TextView(this).apply {
+                text = item.title
+                textSize = 17f
+                setTextColor(0xFF2C3442.toInt())
+                setTypeface(null, Typeface.BOLD)
+            }
+
+            val desc = TextView(this).apply {
+                text = item.description
+                setTextColor(0xFF6E7E8C.toInt())
+            }
+
+            val typeText = TextView(this).apply {
+                text = item.type.uppercase()
+                textSize = 12f
+                setTextColor(0xFF4A3FA0.toInt())
+                setPadding(0, dp(4), 0, dp(8))
+            }
+
+            val playButton = MaterialButton(this).apply {
+                text = "Play / Open"
+                isAllCaps = false
+                setOnClickListener {
+                    playContentOnCaretaker(item)
+                }
+            }
+
+            val deleteButton = MaterialButton(this).apply {
+                text = "Delete"
+                isAllCaps = false
+                setOnClickListener {
+                    if (lastSelectedContent?.id == item.id) {
+                        lastSelectedContent = null
+                    }
+                    contentRef.child(item.id).removeValue()
+                    Toast.makeText(this@SoothingContentCaretakerActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            column.addView(title)
+            column.addView(desc)
+            column.addView(typeText)
+            column.addView(playButton)
+            column.addView(deleteButton)
+
+            card.addView(column)
+            comfortLibraryLayout.addView(card)
+        }
     }
 
-    private fun playSelectedContent() {
-        if (selectedUrl.isEmpty()) {
-            Toast.makeText(this, "No URL found. Upload content first.", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun playContentOnCaretaker(content: SoothingContent) {
+        lastSelectedContent = content
+        updateNowPlaying(content)
 
-        when (selectedType) {
-            "audio", "quran" -> playAudioUrl(selectedUrl)
-            "image", "video" -> openMediaUrl(selectedUrl)
-            else -> Toast.makeText(this, "Unsupported content type", Toast.LENGTH_SHORT).show()
-        }
-    }
+        when (content.type) {
+            "quran", "audio", "dua_audio" -> {
+                if (content.fileUrl.isNotEmpty()) {
+                    playAudio(content.fileUrl)
+                } else {
+                    Toast.makeText(this, "Audio URL missing", Toast.LENGTH_SHORT).show()
+                }
+            }
 
-    private fun playAudioUrl(url: String) {
-        stopContent()
-        tvPlayerStatus.text = "Preparing audio..."
+            "image", "video" -> {
+                if (content.fileUrl.isNotEmpty()) {
+                    openUrl(content.fileUrl)
+                } else {
+                    Toast.makeText(this, "File URL missing", Toast.LENGTH_SHORT).show()
+                }
+            }
 
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(url)
-            setOnPreparedListener {
-                it.start()
-                tvPlayerStatus.text = "Playing: $selectedTitle"
+            "dua" -> {
+                Toast.makeText(this, content.description, Toast.LENGTH_LONG).show()
+                tvPlayerStatus.text = "Text dua selected"
             }
-            setOnCompletionListener {
-                tvPlayerStatus.text = "Finished"
-            }
-            setOnErrorListener { _, _, _ ->
-                tvPlayerStatus.text = "Playback failed"
-                true
-            }
-            prepareAsync()
         }
     }
 
-    private fun openMediaUrl(url: String) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        tvPlayerStatus.text = "Opened: $selectedTitle"
+    private fun playAudio(url: String) {
+        stopAudio()
+        tvPlayerStatus.text = "Loading..."
+
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(url)
+                setOnPreparedListener {
+                    it.start()
+                    tvPlayerStatus.text = "Playing on caretaker screen"
+                }
+                setOnErrorListener { _, _, _ ->
+                    tvPlayerStatus.text = "Audio error"
+                    Toast.makeText(
+                        this@SoothingContentCaretakerActivity,
+                        "Audio play nahi ho rahi. Internet/URL check karein.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    true
+                }
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            tvPlayerStatus.text = "Audio error"
+            Toast.makeText(this, e.message ?: "Audio error", Toast.LENGTH_LONG).show()
+        }
     }
 
-    private fun stopContent() {
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.stop()
-            }
-            it.release()
-        }
-
+    private fun stopAudio() {
+        mediaPlayer?.release()
         mediaPlayer = null
-        tvPlayerStatus.text = "Stopped"
+    }
+
+    private fun openUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            Toast.makeText(this, "URL open nahi ho raha", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateNowPlaying(content: SoothingContent) {
+        tvNowPlayingTitle.text = content.title
+        tvNowPlayingSubtitle.text = content.description
+        tvDuration.text = content.type.uppercase()
+    }
+
+    private fun quranSurahAudioUrl(surahNumber: Int): String {
+        return "https://cdn.islamic.network/quran/audio-surah/128/ar.alafasy/$surahNumber.mp3"
+    }
+
+    private fun quranAyahAudioUrl(globalAyahNumber: Int): String {
+        return "https://cdn.islamic.network/quran/audio/128/ar.alafasy/$globalAyahNumber.mp3"
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        stopContent()
+        stopAudio()
     }
 }
