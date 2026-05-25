@@ -11,6 +11,8 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -62,6 +64,10 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     private val impactThreshold = 25.0
     private val inactivityDurationMs = 8000L
 
+    // NEW VARIABLES
+    private val responseTimeoutMs = 5000L
+    private var fallDialogShown = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_stage_03)
@@ -105,6 +111,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                     tvStatus.text = "Safety monitoring is active"
 
                     for (child in snapshot.children) {
+
                         val title = child.child("title").value?.toString() ?: "No Title"
                         val type = child.child("type").value?.toString() ?: ""
                         val desc = child.child("description").value?.toString() ?: ""
@@ -129,16 +136,24 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                         }
 
                         val icon = ImageView(this@PatientStage3Activity).apply {
+
                             layoutParams = LinearLayout.LayoutParams(70, 70).apply {
                                 setMargins(0, 0, 22, 0)
                             }
 
                             setImageResource(
                                 when (type) {
-                                    "audio", "quran", "dua_audio" -> android.R.drawable.ic_media_play
-                                    "image" -> android.R.drawable.ic_menu_gallery
-                                    "video" -> android.R.drawable.ic_media_ff
-                                    else -> android.R.drawable.ic_menu_info_details
+                                    "audio", "quran", "dua_audio" ->
+                                        android.R.drawable.ic_media_play
+
+                                    "image" ->
+                                        android.R.drawable.ic_menu_gallery
+
+                                    "video" ->
+                                        android.R.drawable.ic_media_ff
+
+                                    else ->
+                                        android.R.drawable.ic_menu_info_details
                                 }
                             )
 
@@ -147,6 +162,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
                         val textBox = LinearLayout(this@PatientStage3Activity).apply {
                             orientation = LinearLayout.VERTICAL
+
                             layoutParams = LinearLayout.LayoutParams(
                                 0,
                                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -176,26 +192,37 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                         card.addView(row)
 
                         card.setOnClickListener {
+
                             when (type) {
+
                                 "audio", "quran", "dua_audio" -> {
-                                    if (url.isNotEmpty()) playAudio(url)
-                                    else Toast.makeText(
-                                        this@PatientStage3Activity,
-                                        desc.ifEmpty { title },
-                                        Toast.LENGTH_LONG
-                                    ).show()
+
+                                    if (url.isNotEmpty()) {
+                                        playAudio(url)
+                                    } else {
+                                        Toast.makeText(
+                                            this@PatientStage3Activity,
+                                            desc.ifEmpty { title },
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 }
 
                                 "image", "video" -> {
-                                    if (url.isNotEmpty()) openMedia(url)
-                                    else Toast.makeText(
-                                        this@PatientStage3Activity,
-                                        "No media found",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+
+                                    if (url.isNotEmpty()) {
+                                        openMedia(url)
+                                    } else {
+                                        Toast.makeText(
+                                            this@PatientStage3Activity,
+                                            "No media found",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
 
                                 "dua", "text" -> {
+
                                     Toast.makeText(
                                         this@PatientStage3Activity,
                                         desc.ifEmpty { title },
@@ -216,11 +243,16 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun playAudio(url: String) {
+
         stopAudio()
 
         mediaPlayer = MediaPlayer().apply {
             setDataSource(url)
-            setOnPreparedListener { it.start() }
+
+            setOnPreparedListener {
+                it.start()
+            }
+
             prepareAsync()
         }
     }
@@ -235,6 +267,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun createOrUpdatePatientRecord() {
+
         val id = patientId ?: return
 
         val data = hashMapOf(
@@ -249,6 +282,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun generateConnectCode() {
+
         val code = "RM${Random.nextInt(100000, 999999)}"
 
         AlertDialog.Builder(this)
@@ -259,13 +293,20 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun startFallMonitoring() {
+
         accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
         }
+
         isMonitoring = true
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
+
         if (!isMonitoring || event == null) return
 
         val x = event.values[0]
@@ -281,49 +322,128 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun detectFall(acc: Double, move: Double) {
+
         val now = System.currentTimeMillis()
 
-        if (acc < freeFallThreshold) possibleFreeFall = true
+        // FREE FALL
+        if (acc < freeFallThreshold) {
+            possibleFreeFall = true
+        }
 
+        // IMPACT DETECTION
         if (possibleFreeFall && acc > impactThreshold) {
+
             impactDetected = true
             impactTime = now
             stillnessStartTime = now
         }
 
+        // STILLNESS CHECK
         if (impactDetected && move < 0.6) {
+
             if (now - stillnessStartTime > inactivityDurationMs) {
-                sendEmergencyAlert("fall", "Possible fall detected", acc)
+
+                if (!fallDialogShown) {
+
+                    fallDialogShown = true
+                    showFallConfirmationDialog(acc)
+                }
+
                 reset()
             }
         }
     }
 
+    private fun showFallConfirmationDialog(acc: Double) {
+
+        runOnUiThread {
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Possible Fall Detected")
+                .setMessage(
+                    "Are you okay?\n\n" +
+                            "Emergency alert will be sent in 5 seconds."
+                )
+                .setCancelable(false)
+                .setPositiveButton("YES I'M OKAY") { d, _ ->
+
+                    Toast.makeText(
+                        this,
+                        "Glad you're safe",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    fallDialogShown = false
+                    d.dismiss()
+                }
+                .create()
+
+            dialog.show()
+
+            Handler(Looper.getMainLooper()).postDelayed({
+
+                if (dialog.isShowing) {
+
+                    dialog.dismiss()
+
+                    sendEmergencyAlert(
+                        "fall",
+                        "Patient is not responding",
+                        acc
+                    )
+
+                    Toast.makeText(
+                        this,
+                        "Emergency alert sent",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    fallDialogShown = false
+                }
+
+            }, responseTimeoutMs)
+        }
+    }
+
     private fun reset() {
+
         possibleFreeFall = false
         impactDetected = false
         stillnessStartTime = 0L
     }
 
-    private fun sendEmergencyAlert(type: String, msg: String, acc: Double) {
+    private fun sendEmergencyAlert(
+        type: String,
+        msg: String,
+        acc: Double
+    ) {
+
         val id = patientId ?: return
 
         val data = hashMapOf(
             "patientId" to id,
             "type" to type,
             "message" to msg,
-            "acc" to acc
+            "acc" to acc,
+            "timestamp" to System.currentTimeMillis(),
+            "status" to "pending"
         )
 
-        firestore.collection("alerts").add(data)
+        firestore.collection("alerts")
+            .add(data)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onResume() {
         super.onResume()
+
         accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
         }
     }
 
