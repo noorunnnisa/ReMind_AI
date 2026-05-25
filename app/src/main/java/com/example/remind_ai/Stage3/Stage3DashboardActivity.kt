@@ -60,7 +60,7 @@ class Stage3DashboardActivity : AppCompatActivity() {
         }
 
         cardSoothingContent.setOnClickListener {
-            openModule(SoothingContentCaretakerActivity::class.java)
+            openModule(SoothingContentC3Activity::class.java)
         }
 
         cardFallDetection.setOnClickListener {

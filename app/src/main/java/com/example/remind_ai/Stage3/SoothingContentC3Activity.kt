@@ -2,6 +2,7 @@ package com.example.remind_ai.Stage3
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.Typeface
 import android.media.MediaPlayer
 import android.net.Uri
@@ -22,6 +23,7 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import android.content.res.ColorStateList
 
 data class SoothingContent(
     var id: String = "",
@@ -33,9 +35,14 @@ data class SoothingContent(
 )
 
 data class SurahItem(val number: Int, val name: String)
-data class DuaAudioItem(val title: String, val description: String, val fileUrl: String)
 
-class SoothingContentCaretakerActivity : AppCompatActivity() {
+data class DuaAudioItem(
+    val title: String,
+    val description: String,
+    val fileUrl: String
+)
+
+class SoothingContentC3Activity : AppCompatActivity() {
 
     private lateinit var comfortLibraryLayout: LinearLayout
     private lateinit var tvNowPlayingTitle: TextView
@@ -105,7 +112,7 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.soothingcontentcaretaker)
+        setContentView(R.layout.activity_soothingcontent_c03)
 
         comfortLibraryLayout = findViewById(R.id.comfortLibraryLayout)
         tvNowPlayingTitle = findViewById(R.id.tvNowPlayingTitle)
@@ -120,11 +127,39 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
     }
 
     private fun setupSurahSpinner() {
-        spSurah.adapter = ArrayAdapter(
+        val adapter = object : ArrayAdapter<String>(
             this,
-            android.R.layout.simple_spinner_dropdown_item,
+            android.R.layout.simple_spinner_item,
             surahList.map { "${it.number}. ${it.name}" }
-        )
+        ) {
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: android.view.ViewGroup
+            ): View {
+                val view = super.getView(position, convertView, parent) as TextView
+                view.setTextColor(Color.parseColor("#2C3442"))
+                view.textSize = 16f
+                view.setPadding(16, 0, 16, 0)
+                return view
+            }
+
+            override fun getDropDownView(
+                position: Int,
+                convertView: View?,
+                parent: android.view.ViewGroup
+            ): View {
+                val view = super.getDropDownView(position, convertView, parent) as TextView
+                view.setTextColor(Color.parseColor("#2C3442"))
+                view.setBackgroundColor(Color.WHITE)
+                view.textSize = 16f
+                view.setPadding(24, 18, 24, 18)
+                return view
+            }
+        }
+
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spSurah.adapter = adapter
     }
 
     private fun setupClicks() {
@@ -134,6 +169,7 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
         findViewById<View>(R.id.btnPlaySurah).setOnClickListener {
             val surah = surahList[spSurah.selectedItemPosition]
+
             val content = SoothingContent(
                 id = contentRef.push().key ?: return@setOnClickListener,
                 title = "Surah ${surah.name}",
@@ -145,11 +181,11 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
             saveContent(content)
             playContentOnCaretaker(content)
-            Toast.makeText(this, "Surah play ho rahi hai", Toast.LENGTH_SHORT).show()
         }
 
         findViewById<View>(R.id.btnPlayNow).setOnClickListener {
             val content = lastSelectedContent
+
             if (content == null) {
                 Toast.makeText(this, "Pehle content select karein", Toast.LENGTH_SHORT).show()
             } else {
@@ -195,6 +231,7 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
             .setTitle("Select Audio Dua")
             .setItems(duaAudioList.map { it.title }.toTypedArray()) { _, which ->
                 val dua = duaAudioList[which]
+
                 val content = SoothingContent(
                     id = contentRef.push().key ?: return@setItems,
                     title = dua.title,
@@ -224,6 +261,7 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
         } else {
             etText.visibility = View.GONE
             etFileUrl.visibility = View.VISIBLE
+
             etFileUrl.hint = when (type) {
                 "image" -> "Picture URL"
                 "video" -> "Video URL"
@@ -275,8 +313,18 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
     private fun saveContent(content: SoothingContent) {
         contentRef.child(content.id).setValue(content)
-        lastSelectedContent = content
-        updateNowPlaying(content)
+            .addOnSuccessListener {
+                lastSelectedContent = content
+                updateNowPlaying(content)
+                Toast.makeText(this, "Content saved", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { error ->
+                Toast.makeText(
+                    this,
+                    error.message ?: "Failed to save content",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
     }
 
     private fun listenForLibrary() {
@@ -292,7 +340,7 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
                 override fun onCancelled(error: DatabaseError) {
                     Toast.makeText(
-                        this@SoothingContentCaretakerActivity,
+                        this@SoothingContentC3Activity,
                         error.message,
                         Toast.LENGTH_SHORT
                     ).show()
@@ -307,9 +355,10 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
             val emptyText = TextView(this).apply {
                 text = "No comfort content added yet"
                 textSize = 15f
-                setTextColor(0xFF6E7E8C.toInt())
+                setTextColor(Color.parseColor("#2C3442"))
                 setPadding(0, dp(8), 0, dp(8))
             }
+
             comfortLibraryLayout.addView(emptyText)
             return
         }
@@ -324,7 +373,10 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
                 }
 
                 radius = dp(18).toFloat()
-                cardElevation = dp(2).toFloat()
+                cardElevation = dp(4).toFloat()
+                setCardBackgroundColor(Color.parseColor("#FFFFFF"))
+                strokeColor = Color.parseColor("#D6CCFF")
+                strokeWidth = dp(1)
 
                 setOnClickListener {
                     playContentOnCaretaker(item)
@@ -338,26 +390,32 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
 
             val title = TextView(this).apply {
                 text = item.title
-                textSize = 17f
-                setTextColor(0xFF2C3442.toInt())
+                textSize = 18f
+                setTextColor(Color.parseColor("#1F2937"))
                 setTypeface(null, Typeface.BOLD)
             }
 
             val desc = TextView(this).apply {
                 text = item.description
-                setTextColor(0xFF6E7E8C.toInt())
+                textSize = 14f
+                setTextColor(Color.parseColor("#4B5563"))
+                setPadding(0, dp(4), 0, 0)
             }
 
             val typeText = TextView(this).apply {
                 text = item.type.uppercase()
                 textSize = 12f
-                setTextColor(0xFF4A3FA0.toInt())
-                setPadding(0, dp(4), 0, dp(8))
+                setTextColor(Color.parseColor("#4A3FA0"))
+                setTypeface(null, Typeface.BOLD)
+                setPadding(0, dp(6), 0, dp(10))
             }
 
             val playButton = MaterialButton(this).apply {
                 text = "Play / Open"
                 isAllCaps = false
+                textSize = 15f
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor("#6F54B5"))
                 setOnClickListener {
                     playContentOnCaretaker(item)
                 }
@@ -366,12 +424,32 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
             val deleteButton = MaterialButton(this).apply {
                 text = "Delete"
                 isAllCaps = false
+                textSize = 15f
+                setTextColor(Color.parseColor("#6F54B5"))
+                setBackgroundColor(Color.WHITE)
+                strokeColor = ColorStateList.valueOf(Color.parseColor("#6F54B5"))
+                strokeWidth = dp(1)
+
                 setOnClickListener {
                     if (lastSelectedContent?.id == item.id) {
                         lastSelectedContent = null
                     }
+
                     contentRef.child(item.id).removeValue()
-                    Toast.makeText(this@SoothingContentCaretakerActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                        .addOnSuccessListener {
+                            Toast.makeText(
+                                this@SoothingContentC3Activity,
+                                "Deleted",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        .addOnFailureListener { error ->
+                            Toast.makeText(
+                                this@SoothingContentC3Activity,
+                                error.message ?: "Delete failed",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                 }
             }
 
@@ -421,19 +499,22 @@ class SoothingContentCaretakerActivity : AppCompatActivity() {
         try {
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(url)
+
                 setOnPreparedListener {
                     it.start()
                     tvPlayerStatus.text = "Playing on caretaker screen"
                 }
+
                 setOnErrorListener { _, _, _ ->
                     tvPlayerStatus.text = "Audio error"
                     Toast.makeText(
-                        this@SoothingContentCaretakerActivity,
+                        this@SoothingContentC3Activity,
                         "Audio play nahi ho rahi. Internet/URL check karein.",
                         Toast.LENGTH_LONG
                     ).show()
                     true
                 }
+
                 prepareAsync()
             }
         } catch (e: Exception) {
