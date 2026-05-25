@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#FFFFFF"
+    android:padding="20dp">
+
+    <EditText
+        android:id="@+id/etTitle"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:background="@drawable/edittext_bg"
+        android:hint="Title"
+        android:textColor="#1F2937"
+        android:textColorHint="#6E7E8C"
+        android:paddingHorizontal="14dp" />
+
+    <EditText
+        android:id="@+id/etSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/edittext_bg"
+        android:hint="Description"
+        android:textColor="#1F2937"
+        android:textColorHint="#6E7E8C"
+        android:paddingHorizontal="14dp" />
+
+    <EditText
+        android:id="@+id/etText"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/edittext_bg"
+        android:gravity="top"
+        android:hint="Dua text"
+        android:textColor="#1F2937"
+        android:textColorHint="#6E7E8C"
+        android:padding="14dp" />
+
+    <EditText
+        android:id="@+id/etFileUrl"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginTop="12dp"
+        android:background="@drawable/edittext_bg"
+        android:hint="Image / Video / Audio URL"
+        android:textColor="#1F2937"
+        android:textColorHint="#6E7E8C"
+        android:paddingHorizontal="14dp" />
+
+</LinearLayout>

@@ -6,6 +6,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
+import com.example.remind_ai.Stage3.PatientStage3Activity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 import com.google.firebase.auth.FirebaseAuth
@@ -178,7 +179,7 @@ class StageDetectionActivity : AppCompatActivity() {
         val intent = when (stage) {
             "Stage 1" -> Intent(this, Stage1Activity::class.java)
             "Stage 2" -> Intent(this, Stage2DashboardActivity::class.java)
-            else -> Intent(this, Stage3DashboardActivity::class.java)
+            else -> Intent(this, PatientStage3Activity::class.java)
         }
 
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

@@ -1,24 +1,34 @@
 package com.example.remind_ai.Stage3
 
 import android.app.AlertDialog
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.media.MediaPlayer
+import android.net.Uri
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
-import android.widget.ImageButton
+import android.os.Handler
+import android.os.Looper
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ImageButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.example.remind_ai.R
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -26,15 +36,19 @@ import kotlin.random.Random
 class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var btnEmergencyHelp: MaterialButton
-    private lateinit var tvEmergencyStatus: TextView
     private lateinit var btnProfile: ImageButton
     private lateinit var navCaregiver: LinearLayout
+    private lateinit var soothingContentLayout: LinearLayout
+    private lateinit var tvStatus: TextView
 
     private lateinit var sensorManager: SensorManager
     private var accelerometer: Sensor? = null
 
     private val firestore = FirebaseFirestore.getInstance()
+    private val realtimeDb = FirebaseDatabase.getInstance().reference
     private val auth = FirebaseAuth.getInstance()
+
+    private var mediaPlayer: MediaPlayer? = null
 
     private val patientId: String?
         get() = auth.currentUser?.uid
@@ -45,271 +59,401 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
     private var impactTime = 0L
     private var stillnessStartTime = 0L
     private var previousAcceleration = 9.8
-    private var lastAlertTime = 0L
 
     private val freeFallThreshold = 3.0
     private val impactThreshold = 25.0
     private val inactivityDurationMs = 8000L
-    private val alertCooldownMs = 30000L
+
+    // NEW VARIABLES
+    private val responseTimeoutMs = 5000L
+    private var fallDialogShown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_patient_stage3)
+        setContentView(R.layout.activity_stage_03)
 
         btnEmergencyHelp = findViewById(R.id.btnEmergencyHelp)
-        tvEmergencyStatus = findViewById(R.id.tvEmergencyStatus)
         btnProfile = findViewById(R.id.btnProfile)
-
-        // Your XML id is navCaregiver
         navCaregiver = findViewById(R.id.navCaregiver)
+        soothingContentLayout = findViewById(R.id.soothingContentLayout)
+        tvStatus = findViewById(R.id.tvEmergencyStatus)
 
         createOrUpdatePatientRecord()
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-        if (accelerometer == null) {
-            tvEmergencyStatus.text = "Fall sensor not available. Emergency button is still active."
-        } else {
-            startFallMonitoring()
-        }
+        if (accelerometer != null) startFallMonitoring()
+
+        loadSoothingContent()
 
         btnEmergencyHelp.setOnClickListener {
-            sendEmergencyAlert(
-                alertType = "manual_emergency",
-                message = "Patient pressed Emergency Help button.",
-                acceleration = 0.0
-            )
+            sendEmergencyAlert("manual", "Emergency pressed", 0.0)
         }
 
         navCaregiver.setOnClickListener {
-            generateAndShowCaregiverConnectCode()
+            generateConnectCode()
         }
+    }
+
+    private fun loadSoothingContent() {
+        realtimeDb.child("soothing_content")
+            .addValueEventListener(object : ValueEventListener {
+
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    soothingContentLayout.removeAllViews()
+
+                    if (!snapshot.exists()) {
+                        tvStatus.text = "No soothing content available"
+                        return
+                    }
+
+                    tvStatus.text = "Safety monitoring is active"
+
+                    for (child in snapshot.children) {
+
+                        val title = child.child("title").value?.toString() ?: "No Title"
+                        val type = child.child("type").value?.toString() ?: ""
+                        val desc = child.child("description").value?.toString() ?: ""
+                        val url = child.child("fileUrl").value?.toString() ?: ""
+
+                        val card = MaterialCardView(this@PatientStage3Activity).apply {
+                            radius = 24f
+                            cardElevation = 6f
+                            setCardBackgroundColor(Color.WHITE)
+
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, 20)
+                            }
+                        }
+
+                        val row = LinearLayout(this@PatientStage3Activity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            setPadding(28, 28, 28, 28)
+                        }
+
+                        val icon = ImageView(this@PatientStage3Activity).apply {
+
+                            layoutParams = LinearLayout.LayoutParams(70, 70).apply {
+                                setMargins(0, 0, 22, 0)
+                            }
+
+                            setImageResource(
+                                when (type) {
+                                    "audio", "quran", "dua_audio" ->
+                                        android.R.drawable.ic_media_play
+
+                                    "image" ->
+                                        android.R.drawable.ic_menu_gallery
+
+                                    "video" ->
+                                        android.R.drawable.ic_media_ff
+
+                                    else ->
+                                        android.R.drawable.ic_menu_info_details
+                                }
+                            )
+
+                            setColorFilter(Color.parseColor("#4A3FA0"))
+                        }
+
+                        val textBox = LinearLayout(this@PatientStage3Activity).apply {
+                            orientation = LinearLayout.VERTICAL
+
+                            layoutParams = LinearLayout.LayoutParams(
+                                0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                1f
+                            )
+                        }
+
+                        val titleText = TextView(this@PatientStage3Activity).apply {
+                            text = title
+                            textSize = 17f
+                            setTextColor(Color.parseColor("#1F2937"))
+                            setTypeface(null, Typeface.BOLD)
+                        }
+
+                        val descText = TextView(this@PatientStage3Activity).apply {
+                            text = desc
+                            textSize = 14f
+                            setTextColor(Color.parseColor("#4B5563"))
+                        }
+
+                        textBox.addView(titleText)
+                        textBox.addView(descText)
+
+                        row.addView(icon)
+                        row.addView(textBox)
+
+                        card.addView(row)
+
+                        card.setOnClickListener {
+
+                            when (type) {
+
+                                "audio", "quran", "dua_audio" -> {
+
+                                    if (url.isNotEmpty()) {
+                                        playAudio(url)
+                                    } else {
+                                        Toast.makeText(
+                                            this@PatientStage3Activity,
+                                            desc.ifEmpty { title },
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+
+                                "image", "video" -> {
+
+                                    if (url.isNotEmpty()) {
+                                        openMedia(url)
+                                    } else {
+                                        Toast.makeText(
+                                            this@PatientStage3Activity,
+                                            "No media found",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+
+                                "dua", "text" -> {
+
+                                    Toast.makeText(
+                                        this@PatientStage3Activity,
+                                        desc.ifEmpty { title },
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        }
+
+                        soothingContentLayout.addView(card)
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    tvStatus.text = "Failed to load content"
+                }
+            })
+    }
+
+    private fun playAudio(url: String) {
+
+        stopAudio()
+
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(url)
+
+            setOnPreparedListener {
+                it.start()
+            }
+
+            prepareAsync()
+        }
+    }
+
+    private fun stopAudio() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+    }
+
+    private fun openMedia(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     private fun createOrUpdatePatientRecord() {
-        val currentPatientId = patientId
 
-        if (currentPatientId == null) {
-            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
+        val id = patientId ?: return
 
-        val patientData = mapOf(
-            "patientId" to currentPatientId,
+        val data = hashMapOf(
+            "patientId" to id,
             "stage" to 3,
-            "role" to "patient",
-            "status" to "Stable",
-            "updatedAt" to System.currentTimeMillis()
+            "status" to "Stable"
         )
 
         firestore.collection("patients")
-            .document(currentPatientId)
-            .set(patientData, SetOptions.merge())
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Patient setup failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun generateAndShowCaregiverConnectCode() {
-        val currentPatientId = patientId
-
-        if (currentPatientId == null) {
-            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val code = generateConnectCode()
-
-        val data = mapOf(
-            "patientId" to currentPatientId,
-            "connectCode" to code,
-            "stage" to 3,
-            "role" to "patient",
-            "connectCodeUpdatedAt" to System.currentTimeMillis(),
-            "updatedAt" to System.currentTimeMillis()
-        )
-
-        firestore.collection("patients")
-            .document(currentPatientId)
+            .document(id)
             .set(data, SetOptions.merge())
-            .addOnSuccessListener {
-                showConnectCodeDialog(code)
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Code failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
     }
 
-    private fun generateConnectCode(): String {
-        return "RM${Random.nextInt(100000, 999999)}"
-    }
+    private fun generateConnectCode() {
 
-    private fun showConnectCodeDialog(code: String) {
+        val code = "RM${Random.nextInt(100000, 999999)}"
+
         AlertDialog.Builder(this)
-            .setTitle("Caregiver Connect Code")
-            .setMessage("Share this code with your caregiver:\n\n$code")
+            .setTitle("Caregiver Code")
+            .setMessage(code)
             .setPositiveButton("OK", null)
             .show()
     }
 
     private fun startFallMonitoring() {
-        val sensor = accelerometer ?: return
+
+        accelerometer?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+        }
 
         isMonitoring = true
-
-        sensorManager.registerListener(
-            this,
-            sensor,
-            SensorManager.SENSOR_DELAY_NORMAL
-        )
-
-        tvEmergencyStatus.text =
-            "Safety monitoring is active. Caregiver will be notified if help is needed."
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
+
         if (!isMonitoring || event == null) return
 
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
 
-        val acceleration = sqrt((x * x + y * y + z * z).toDouble())
-        val movementChange = abs(acceleration - previousAcceleration)
-        val now = System.currentTimeMillis()
+        val acc = sqrt((x * x + y * y + z * z).toDouble())
+        val move = abs(acc - previousAcceleration)
 
-        detectFall(acceleration, movementChange, now)
+        detectFall(acc, move)
 
-        previousAcceleration = acceleration
+        previousAcceleration = acc
     }
 
-    private fun detectFall(acceleration: Double, movementChange: Double, now: Long) {
-        if (now - lastAlertTime < alertCooldownMs) return
+    private fun detectFall(acc: Double, move: Double) {
 
-        if (acceleration < freeFallThreshold) {
+        val now = System.currentTimeMillis()
+
+        // FREE FALL
+        if (acc < freeFallThreshold) {
             possibleFreeFall = true
-            tvEmergencyStatus.text = "Sudden drop detected. Checking safety..."
-            return
         }
 
-        if (possibleFreeFall && acceleration > impactThreshold) {
+        // IMPACT DETECTION
+        if (possibleFreeFall && acc > impactThreshold) {
+
             impactDetected = true
             impactTime = now
             stillnessStartTime = now
-            tvEmergencyStatus.text = "Strong impact detected. Monitoring movement..."
-            return
         }
 
-        if (impactDetected) {
-            if (movementChange < 0.6) {
-                if (stillnessStartTime == 0L) {
-                    stillnessStartTime = now
+        // STILLNESS CHECK
+        if (impactDetected && move < 0.6) {
+
+            if (now - stillnessStartTime > inactivityDurationMs) {
+
+                if (!fallDialogShown) {
+
+                    fallDialogShown = true
+                    showFallConfirmationDialog(acc)
                 }
 
-                val stillFor = now - stillnessStartTime
+                reset()
+            }
+        }
+    }
 
-                if (stillFor >= inactivityDurationMs) {
+    private fun showFallConfirmationDialog(acc: Double) {
+
+        runOnUiThread {
+
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Possible Fall Detected")
+                .setMessage(
+                    "Are you okay?\n\n" +
+                            "Emergency alert will be sent in 5 seconds."
+                )
+                .setCancelable(false)
+                .setPositiveButton("YES I'M OKAY") { d, _ ->
+
+                    Toast.makeText(
+                        this,
+                        "Glad you're safe",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    fallDialogShown = false
+                    d.dismiss()
+                }
+                .create()
+
+            dialog.show()
+
+            Handler(Looper.getMainLooper()).postDelayed({
+
+                if (dialog.isShowing) {
+
+                    dialog.dismiss()
+
                     sendEmergencyAlert(
-                        alertType = "fall_detected",
-                        message = "Possible fall detected automatically by phone movement sensor.",
-                        acceleration = acceleration
+                        "fall",
+                        "Patient is not responding",
+                        acc
                     )
 
-                    resetFallState()
-                }
-            } else {
-                stillnessStartTime = now
-            }
+                    Toast.makeText(
+                        this,
+                        "Emergency alert sent",
+                        Toast.LENGTH_LONG
+                    ).show()
 
-            if (now - impactTime > 15000L) {
-                resetFallState()
-                tvEmergencyStatus.text =
-                    "Safety monitoring is active. Caregiver will be notified if help is needed."
-            }
+                    fallDialogShown = false
+                }
+
+            }, responseTimeoutMs)
         }
     }
 
-    private fun sendEmergencyAlert(alertType: String, message: String, acceleration: Double) {
-        val currentPatientId = patientId
+    private fun reset() {
 
-        if (currentPatientId == null) {
-            Toast.makeText(this, "Patient not logged in", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val now = System.currentTimeMillis()
-        lastAlertTime = now
-
-        btnEmergencyHelp.isEnabled = false
-        tvEmergencyStatus.text = "Sending alert to caregiver..."
-
-        val alertRef = firestore.collection("patient_alerts").document()
-        val alertId = alertRef.id
-
-        val alert = mapOf(
-            "id" to alertId,
-            "patientId" to currentPatientId,
-            "alertType" to alertType,
-            "severity" to "high",
-            "message" to message,
-            "acceleration" to acceleration,
-            "timestamp" to now,
-            "formattedTime" to formatDateTime(now),
-            "status" to "active"
-        )
-
-        alertRef.set(alert)
-            .addOnSuccessListener {
-                btnEmergencyHelp.isEnabled = true
-
-                if (alertType == "fall_detected") {
-                    tvEmergencyStatus.text = "Possible fall detected. Caregiver has been alerted."
-                    Toast.makeText(this, "Fall alert sent to caregiver", Toast.LENGTH_LONG).show()
-                } else {
-                    tvEmergencyStatus.text = "Emergency alert sent to caregiver."
-                    Toast.makeText(this, "Emergency alert sent", Toast.LENGTH_LONG).show()
-                }
-            }
-            .addOnFailureListener { e ->
-                btnEmergencyHelp.isEnabled = true
-                tvEmergencyStatus.text = "Alert failed: ${e.message}"
-                Toast.makeText(this, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun resetFallState() {
         possibleFreeFall = false
         impactDetected = false
-        impactTime = 0L
         stillnessStartTime = 0L
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+    private fun sendEmergencyAlert(
+        type: String,
+        msg: String,
+        acc: Double
+    ) {
+
+        val id = patientId ?: return
+
+        val data = hashMapOf(
+            "patientId" to id,
+            "type" to type,
+            "message" to msg,
+            "acc" to acc,
+            "timestamp" to System.currentTimeMillis(),
+            "status" to "pending"
+        )
+
+        firestore.collection("alerts")
+            .add(data)
     }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onResume() {
         super.onResume()
-        if (isMonitoring) {
-            accelerometer?.let {
-                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-            }
+
+        accelerometer?.let {
+            sensorManager.registerListener(
+                this,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
         }
     }
 
     override fun onPause() {
         super.onPause()
-        if (isMonitoring) {
-            sensorManager.unregisterListener(this)
-        }
+        sensorManager.unregisterListener(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        sensorManager.unregisterListener(this)
-    }
-
-    private fun formatDateTime(timestamp: Long): String {
-        return SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault()).format(Date(timestamp))
+        stopAudio()
     }
 }
