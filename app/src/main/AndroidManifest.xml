@@ -69,7 +69,7 @@
         <activity android:name=".Stage3.Stage3DashboardActivity" android:exported="false" />
         <activity android:name=".Stage3.BehaviorHealthLogsC3Activity" android:exported="false" />
         <activity android:name=".Stage3.DailyChecklistC3Activity" android:exported="false" />
-        <activity android:name=".Stage3.SoothingContentCaretakerActivity" android:exported="false" />
+        <activity android:name=".Stage3.SoothingContentC3Activity" android:exported="false" />
         <activity android:name=".Stage3.PatientStage3Activity" android:exported="false" />
         <activity android:name=".Stage3.CaregiverFallDetectionActivity" android:exported="false" />
 

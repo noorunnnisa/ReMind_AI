@@ -2,6 +2,8 @@ package com.example.remind_ai.Stage3
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.media.MediaPlayer
 import android.net.Uri
 import android.hardware.Sensor
@@ -111,6 +113,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                         val card = MaterialCardView(this@PatientStage3Activity).apply {
                             radius = 24f
                             cardElevation = 6f
+                            setCardBackgroundColor(Color.WHITE)
 
                             layoutParams = LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -132,12 +135,14 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
                             setImageResource(
                                 when (type) {
-                                    "audio", "quran" -> android.R.drawable.ic_media_play
+                                    "audio", "quran", "dua_audio" -> android.R.drawable.ic_media_play
                                     "image" -> android.R.drawable.ic_menu_gallery
                                     "video" -> android.R.drawable.ic_media_ff
                                     else -> android.R.drawable.ic_menu_info_details
                                 }
                             )
+
+                            setColorFilter(Color.parseColor("#4A3FA0"))
                         }
 
                         val textBox = LinearLayout(this@PatientStage3Activity).apply {
@@ -152,13 +157,14 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
                         val titleText = TextView(this@PatientStage3Activity).apply {
                             text = title
                             textSize = 17f
-                            setTextColor(0xFF2C3442.toInt())
+                            setTextColor(Color.parseColor("#1F2937"))
+                            setTypeface(null, Typeface.BOLD)
                         }
 
                         val descText = TextView(this@PatientStage3Activity).apply {
                             text = desc
                             textSize = 14f
-                            setTextColor(0xFF6E7E8C.toInt())
+                            setTextColor(Color.parseColor("#4B5563"))
                         }
 
                         textBox.addView(titleText)
@@ -171,7 +177,7 @@ class PatientStage3Activity : AppCompatActivity(), SensorEventListener {
 
                         card.setOnClickListener {
                             when (type) {
-                                "audio", "quran" -> {
+                                "audio", "quran", "dua_audio" -> {
                                     if (url.isNotEmpty()) playAudio(url)
                                     else Toast.makeText(
                                         this@PatientStage3Activity,
